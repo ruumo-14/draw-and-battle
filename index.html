@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>DRAW & BATTLE</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151e33;--line:#2b3958;--text:#f3f6ff;--muted:#9eacc8;--accent:#8b7cff;--gold:#ffd166}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1b2850,#090e1b 65%);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}header{padding:18px 20px;text-align:center;border-bottom:1px solid var(--line)}h1{margin:0;font-size:clamp(25px,5vw,38px);letter-spacing:3px}header p{margin:5px;color:var(--muted);font-size:13px}.wrap{max-width:1000px;margin:auto;padding:16px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tabs button,.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:10px 15px;border-radius:11px;font-weight:700;cursor:pointer}.tabs button.active,.btn.primary{background:var(--accent);border-color:var(--accent);color:white}.panel{background:#111a2dcc;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.hidden{display:none!important}.muted{color:var(--muted)}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0}.stat{background:#0b1326;border:1px solid var(--line);border-radius:12px;padding:12px}.stat b{display:block;font-size:21px;color:var(--gold)}.monster{border:1px solid var(--line);background:#0d162a;border-radius:12px;padding:12px;margin:8px 0}.monster h3{margin:0 0 5px}.tag{display:inline-block;padding:3px 8px;border-radius:20px;background:#293653;color:#dbe4ff;font-size:12px;margin-right:5px}button:disabled{opacity:.4;cursor:not-allowed}canvas{display:block;width:100%;max-width:600px;aspect-ratio:1/1;background:#080e1d;border:1px solid var(--line);border-radius:12px;touch-action:none}.tools{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.swatch{width:30px;height:30px;border:2px solid white;border-radius:50%;cursor:pointer}.swatch.selected{outline:3px solid var(--gold)}input[type=range]{width:130px}footer{text-align:center;color:var(--muted);padding:20px;font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>DRAW & BATTLE</h1><p>CAPTURE · DRAW · TRAIN · BATTLE</p></header>
+<main class="wrap">
+<div class="stats"><div class="stat">GOLD<b id="gold">0</b></div><div class="stat">仲間モンスター<b id="count">0</b></div><div class="stat">図鑑登録<b id="dex">0</b></div></div>
+<nav class="tabs">
+<button class="active" data-tab="explore">探索・捕獲</button><button data-tab="draw">お絵かき</button><button data-tab="book">モンスター図鑑</button><button data-tab="battle">バトル</button>
+</nav>
+<section id="explore" class="panel">
+<h2>🌲 モンスター探索</h2><p class="muted">探索してモンスターを見つけよう。見つけたモンスターは捕獲して仲間にできるよ。</p>
+<button class="btn primary" id="search">探索する（10 GOLD）</button><div id="found" class="monster hidden"></div>
+</section>
+<section id="draw" class="panel hidden">
+<h2>🎨 モンスターを描こう</h2><p class="muted">仲間にしたモンスターを選んで、属性をイメージした絵を描こう。絵の評価で能力に小さなボーナスがつくよ。</p>
+<label>描くモンスター <select id="drawSelect"></select></label>
+<div class="tools" id="palette"></div><div class="tools"><label>ペンの太さ <input id="brush" type="range" min="2" max="28" value="8"></label><button class="btn" id="undo">1つ戻す</button><button class="btn" id="clear">消す</button><button class="btn primary" id="saveArt">絵を保存して評価</button></div>
+<canvas id="art" width="600" height="600"></canvas><p id="artResult" class="muted">キャンバスに自由に描いてみよう。</p>
+</section>
+<section id="book" class="panel hidden"><h2>📖 モンスター図鑑</h2><div id="collection"></div></section>
+<section id="battle" class="panel hidden">
+<h2>⚔️ トレーニングバトル</h2><p class="muted">仲間を選んでバトル。勝つとGOLDを獲得できるよ。</p><div class="row"><select id="battleSelect"></select><button class="btn primary" id="startBattle">バトル開始</button></div><div id="battleArea" class="monster hidden"></div>
+</section>
+</main><footer>DRAW & BATTLE · Your monsters, your artwork.</footer>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const types=[{n:"炎",c:"#ff654f"},{n:"水",c:"#4da9ff"},{n:"草",c:"#55d68b"},{n:"雷",c:"#ffe05c"},{n:"影",c:"#a78bfa"},{n:"光",c:"#fff0a6"}];
+const rarities=[{n:"コモン",w:48,m:1},{n:"アンコモン",w:27,m:1.15},{n:"レア",w:15,m:1.35},{n:"エピック",w:8,m:1.65},{n:"レジェンド",w:2,m:2}];
+let data=JSON.parse(localStorage.getItem("dab-save")||'{"gold":50,"monsters":[],"seen":[]}'), encounter=null;
+const save=()=>localStorage.setItem("dab-save",JSON.stringify(data));
+function stats(){ $("gold").textContent=data.gold;$("count").textContent=data.monsters.length;$("dex").textContent=data.seen.length;refreshSelects();renderBook();}
+function weighted(){let r=Math.random()*100;for(const x of rarities){r-=x.w;if(r<=0)return x}return rarities[0]}
+function makeMonster(){const t=types[Math.floor(Math.random()*types.length)],r=weighted(),id=Date.now()+Math.random();return{id,name:t.n+"の"+["スライム","ウルフ","ドラゴン","ゴーレム","フェアリー","バット"][Math.floor(Math.random()*6)],type:t.n,color:t.c,rarity:r.n,mult:r.m,hp:Math.round(40*r.m),atk:Math.round(10*r.m),def:Math.round(5*r.m),bonus:0,art:null}}
+function showFound(){if(!encounter)return;$("found").classList.remove("hidden");$("found").innerHTML='<h3>'+encounter.name+'</h3><span class="tag">'+encounter.type+'</span><span class="tag">'+encounter.rarity+'</span><p>HP '+encounter.hp+' / ATK '+encounter.atk+' / DEF '+encounter.def+'</p><button class="btn primary" id="catch">捕獲する</button>'; $("catch").onclick=()=>{data.monsters.push(encounter);data.seen.push(encounter.name);encounter=null;save();$("found").classList.add("hidden");stats();alert("仲間になった！ お絵かきタブでイラストを描こう。")}}
+$("search").onclick=()=>{if(data.gold<10){alert("GOLDが足りないよ。バトルでGOLDを集めよう。");return}data.gold-=10;encounter=makeMonster();save();stats();showFound()};
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));["explore","draw","book","battle"].forEach(id=>$(id).classList.toggle("hidden",id!==b.dataset.tab));});
+function refreshSelects(){for(const id of ["drawSelect","battleSelect"]){const s=$(id),old=s.value;s.innerHTML="";data.monsters.forEach((m,i)=>{const o=document.createElement("option");o.value=i;o.textContent=m.name+"（"+m.rarity+"）";s.append(o)});if(data.monsters.length)s.value=Math.min(Number(old)||0,data.monsters.length-1)}}
+function renderBook(){$("collection").innerHTML=data.monsters.length?data.monsters.map((m,i)=>'<article class="monster"><h3>'+m.name+'</h3><span class="tag">'+m.type+'</span><span class="tag">'+m.rarity+'</span><p>HP '+m.hp+' / ATK '+m.atk+' / DEF '+m.def+'　<span class="muted">描画ボーナス +'+m.bonus+'</span></p>'+(m.art?'<img alt="自分で描いたモンスターの絵" src="'+m.art+'" style="width:110px;height:110px;object-fit:contain;background:#080e1d;border-radius:8px">':'<span class="muted">イラスト未登録</span>')+'</article>').join(""):'<p class="muted">まだ仲間がいないよ。探索して捕獲しよう！</p>'}
+const canvas=$("art"),ctx=canvas.getContext("2d");let drawing=false,color="#ff654f",strokes=[],current=null;
+function clearCanvas(){ctx.fillStyle="#080e1d";ctx.fillRect(0,0,600,600)}
+function redraw(){clearCanvas();for(const s of strokes){ctx.strokeStyle=s.color;ctx.lineWidth=s.width;ctx.lineCap="round";ctx.lineJoin="round";ctx.beginPath();s.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke()}}
+types.concat([{n:"白",c:"#ffffff"},{n:"黒",c:"#111827"},{n:"桃",c:"#ff8fc7"},{n:"橙",c:"#ffad5a"}]).forEach(t=>{const b=document.createElement("button");b.className="swatch"+(t.c===color?" selected":"");b.style.background=t.c;b.title=t.n;b.onclick=()=>{color=t.c;document.querySelectorAll(".swatch").forEach(x=>x.classList.remove("selected"));b.classList.add("selected")};$("palette").append(b)});
+function pos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*600/r.width,y:(e.clientY-r.top)*600/r.height}}
+canvas.onpointerdown=e=>{if(!data.monsters.length)return;drawing=true;canvas.setPointerCapture(e.pointerId);current={color,width:Number($("brush").value),points:[pos(e)]};strokes.push(current);redraw()};
+canvas.onpointermove=e=>{if(!drawing)return;current.points.push(pos(e));redraw()};canvas.onpointerup=canvas.onpointercancel=()=>drawing=false;
+$("undo").onclick=()=>{strokes.pop();redraw()};$("clear").onclick=()=>{strokes=[];redraw();$("artResult").textContent="キャンバスを消したよ。"};
+$("saveArt").onclick=()=>{const m=data.monsters[Number($("drawSelect").value)];if(!m){alert("先にモンスターを捕獲してね");return}if(!strokes.length){alert("まず絵を描いてね");return}const colorMatch=strokes.filter(s=>s.color.toLowerCase()===m.color.toLowerCase()).length;const score=Math.min(5,Math.max(1,Math.floor(strokes.length/5)+ (colorMatch?1:0)));m.bonus+=score;m.hp+=score*2;m.atk+=score;m.def+=score;m.art=canvas.toDataURL("image/png");save();stats();$("artResult").textContent="評価："+score+"ポイント！ HP・ATK・DEFが少し上がったよ。何度でも描き直して強化できるよ。"};
+$("startBattle").onclick=()=>{const m=data.monsters[Number($("battleSelect").value)];if(!m){alert("先にモンスターを捕獲してね");return}const enemy={hp:35+Math.floor(Math.random()*35),atk:8+Math.floor(Math.random()*8)};$("battleArea").classList.remove("hidden");let turn=0,ehp=enemy.hp,mhp=m.hp;$("battleArea").innerHTML='<h3>'+m.name+' VS 野生のライバル</h3><p id="battleText">バトル開始！</p><p>相手HP：<b id="ehp">'+ehp+'</b> ／ '+m.name+' HP：<b id="mhp">'+mhp+'</b></p><button class="btn primary" id="attack">こうげき</button>'; $("attack").onclick=()=>{if(ehp<=0||mhp<=0)return;ehp-=Math.max(1,m.atk-enemy.atk/3);if(ehp>0)mhp-=Math.max(1,enemy.atk-m.def/3);$("ehp").textContent=Math.max(0,Math.ceil(ehp));$("mhp").textContent=Math.max(0,Math.ceil(mhp));if(ehp<=0){const reward=15+Math.floor(Math.random()*16);data.gold+=reward;$("battleText").textContent="勝利！ "+reward+" GOLDを獲得！";$("attack").disabled=true;save();stats()}else if(mhp<=0){$("battleText").textContent="今回は負けてしまった…。また挑戦しよう。";$("attack").disabled=true}}};
+clearCanvas();stats();
+})();
+</script></body></html>
